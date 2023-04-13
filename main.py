@@ -119,7 +119,7 @@ text_files = glob.glob(os.path.join(text_files_folder, "*.txt"))
 for text_file_path in text_files:
     individual_file_name = os.path.basename(text_file_path)
 
-    if not text_file_path.startswith(individual_file_name):
+    if not individual_file_name.startswith(processed_prefix):
         image_urls = read_image_urls_from_file(text_file_path)
         firebase_folder = os.path.splitext(os.path.basename(text_file_path))[0]
         processed_images = asyncio.run(process_image_batch(image_urls, target_width, firebase_folder))
