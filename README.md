@@ -1,14 +1,14 @@
-###Firebase Image Compression Tool
+### Firebase Image Compression Tool
 This tool uses Python, Firebase, and PIL (Python Imaging Library) to compress and upload images/gifs to Firebase Storage. The tool reads a list of image URLs from text files, compresses them to the desired size, and uploads them to Firebase Storage. The processed URLs are then marked in the text file to avoid re-processing.
 
-##Dependencies
+## Dependencies
 This tool requires the following Python packages:
 
   aiohttp
   firebase_admin
   Pillow
 
-##How to Use
+## How to Use
   Clone the repository.
   Install the required packages using pip: pip install -r requirements.txt.
   Set up Firebase Storage and download the json file for authentication.
