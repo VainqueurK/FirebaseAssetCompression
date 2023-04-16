@@ -44,6 +44,9 @@ def compress_gif(image, width, height):
     compressed_image = Image.open(compressed_image)
     return compressed_image
 
+##remove file extention and return the name
+def get_file_name(file_path):
+    return os.path.splitext(os.path.basename(file_path))[0]
 
 # Define the async function to compress and upload images
 async def compress_and_upload_image_async(session, image_url, width, folder, local=False, base64_data=None):
@@ -90,7 +93,7 @@ async def compress_and_upload_image_async(session, image_url, width, folder, loc
 
         image_buffer.seek(0)
 
-        firebase_path = f"{folder}/{image_name}"
+        firebase_path = f"{folder}/{get_file_name(image_name)}"
         blob = bucket.blob(firebase_path)
         blob.upload_from_file(image_buffer, content_type=content_type)
         print(f"Image uploaded to: {firebase_path}")
