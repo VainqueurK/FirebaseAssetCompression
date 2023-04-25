@@ -11,8 +11,6 @@ from urllib.parse import urlparse
 from typing import List, Tuple
 from PIL import Image
 from io import BytesIO
-from tqdm import tqdm
-
 
 # Initialize Firebase
 cred = credentials.Certificate("./novabl0x-ae3e6a3e422d.json")
@@ -28,6 +26,8 @@ text_files_folder = "./list_to_compress"
 
 # Define the target width of the images/gifs
 target_width = 300
+
+rate_limit_in_seconds = 0.4
 
 def compress_gif(image, width, height):
     # resize all frames of the gif using the LZW compression algorithm
@@ -49,7 +49,8 @@ def get_file_name(file_path):
     return os.path.splitext(os.path.basename(file_path))[0]
 
 # Define the async function to compress and upload images
-async def compress_and_upload_image_async(session, image_url, width, folder, local=False, base64_data=None):
+async def compress_and_upload_image_async(session, image_url, width, folder, local=False, base64_data=None, file_path=None, index=None):
+    print(f"Processing image URL: {image_url}")  # Add this line
     try:
         if base64_data:
             index, data = base64_data
@@ -66,7 +67,7 @@ async def compress_and_upload_image_async(session, image_url, width, folder, loc
                 image = Image.open(f)
             image_name = image_url.split("/")[-1]
         else:
-            async with session.get(image_url) as response:
+            async with session.get(image_url, timeout=10) as response:
                 content = await response.read()
                 image = Image.open(io.BytesIO(content))
             image_name = image_url.split("/")[-1]
@@ -98,6 +99,9 @@ async def compress_and_upload_image_async(session, image_url, width, folder, loc
         blob.upload_from_file(image_buffer, content_type=content_type)
         print(f"Image uploaded to: {firebase_path}")
 
+        if file_path and index is not None:
+            add_processed_prefix(file_path, index)
+
         return image_name
     except Exception as e:
         print(f"Error processing image: {str(e)}")
@@ -105,32 +109,37 @@ async def compress_and_upload_image_async(session, image_url, width, folder, loc
 
 
 # Define the function to process image batches concurrently
-async def process_image_batch(urls, width, folder, local=False, base64_data=None):
+async def process_image_batch(urls, width, folder, local=False, base64_data=None, file_path=None):
     async with aiohttp.ClientSession() as session:
         tasks = []
         if base64_data:
             for index, data in base64_data:
                 task = asyncio.ensure_future(
                     compress_and_upload_image_async(session, None, width, folder,
-                                                    base64_data=(index, data)))
+                                                    base64_data=(index, data), file_path=file_path, index=index))
                 tasks.append(task)
         else:
-            for image_url in urls:
+            for index, image_url in urls:
                 task = asyncio.ensure_future(
                     compress_and_upload_image_async(session, image_url, width, folder,
-                                                    local))
+                                                    local, file_path=file_path, index=index))
                 tasks.append(task)
+
+                # Add a delay between tasks to avoid hitting rate limits
+                await asyncio.sleep(rate_limit_in_seconds)  # Sleep for 1 second
+
         processed = await asyncio.gather(*tasks)
         return len([p for p in processed if p is not None])  # Filter out unsuccessful uploads
 
+
 # Define the function to update the processed image URLs in the text file
-def update_processed_urls(file_path, processed_count, base64_indices=None):
+def update_processed_urls(file_path, processed_urls, base64_indices=None):
     with open(file_path, "r") as f:
         lines = f.readlines()
 
     with open(file_path, "w") as f:
         for index, line in enumerate(lines):
-            if index < processed_count or (base64_indices and index in base64_indices):
+            if index in processed_urls or (base64_indices and index in base64_indices):
                 f.write(f"{processed_prefix}{line}")
             else:
                 f.write(line)
@@ -188,16 +197,15 @@ def process_list_of_image_list_folder(text_files_folder) -> None:
             image_urls, base64_data = split_contents(text_file_path)
 
             firebase_folder = os.path.splitext(os.path.basename(text_file_path))[0]
-            processed_images = asyncio.run(process_image_batch(image_urls, target_width, firebase_folder))
-            update_processed_urls(text_file_path, processed_images)
+            processed_images = asyncio.run(process_image_batch(image_urls, target_width, firebase_folder, file_path=text_file_path))
+            # update_processed_urls(text_file_path, processed_images)  # Remove this line
 
             processed_base64_images = asyncio.run(
-                process_image_batch([], target_width, firebase_folder, base64_data=base64_data))
-            update_processed_urls(text_file_path, processed_base64_images,
-                                  base64_indices=[x[0] for x in base64_data if x[1].startswith(processed_prefix)])
+                process_image_batch([], target_width, firebase_folder, base64_data=base64_data, file_path=text_file_path))
+            # update_processed_urls(text_file_path, processed_base64_images, base64_indices=[x[0] for x in base64_data if x[1].startswith(processed_prefix)])  # Remove this line
 
-            os.rename(text_file_path,
-                      os.path.join(text_files_folder, f"{processed_prefix}{os.path.basename(text_file_path)}"))
+            os.rename(text_file_path, os.path.join(text_files_folder, f"{processed_prefix}{os.path.basename(text_file_path)}"))
+
 
 
 def start():
